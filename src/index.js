@@ -5,8 +5,8 @@ import { min, max, merge } from "lodash";
 import randomcolor from "randomcolor";
 const $canvas = document.getElementById("canvas");
 const ctx = $canvas.getContext("2d");
-$canvas.width = window.innerWidth;
-$canvas.height = window.innerHeight;
+$canvas.width = window.innerWidth - 40;
+$canvas.height = window.innerHeight - 40;
 
 function getGeoBounds(geo) {
   const { features } = geo;
@@ -65,9 +65,10 @@ function draw(ctx, geo, option) {
       currCoordinate = currCoordinate[0];
       flatDeep++;
     }
+    const color = randomcolor();
     coordinate.flat(flatDeep).forEach((partCoordinate) => {
       ctx.save();
-      ctx.fillStyle = randomcolor();
+      ctx.fillStyle = color;
       ctx.beginPath();
       partCoordinate.forEach((areaCoordinate, index, arr) => {
         if (!Array.isArray(areaCoordinate)) {
