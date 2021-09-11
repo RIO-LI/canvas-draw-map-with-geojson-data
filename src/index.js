@@ -2,13 +2,17 @@ import "./styles.css";
 import GeoJson, { China as ChinaJson } from "china-geojson";
 import { min, max, merge } from "lodash";
 import randomcolor from "randomcolor";
+import matrixInverse from "matrix-inverse";
 
 
+let prevMatrix = [[1,0,0,0],[0,1,0,0], [0,0,1,0], [0,0,0,1]];
+let prevTransform = [1,0,0,1,0,0];
+let prevOffsetX = 0;
+let prevOffsetY = 0;
 const $scaleCtl = document.querySelector('.scale-contoller');
 let scaleBase = 1;
 let drag = false;
 let dragPosition = null;
-const globalTranslate = {x: 0, y: 0};
 const $offscreenCanvas = document.createElement("canvas");
 const octx = $offscreenCanvas.getContext("2d");
 $offscreenCanvas.width = document.documentElement.clientWidth;
@@ -74,7 +78,7 @@ function getPointerForScreen(coordinate, scales, geoBounds) {
   return res;
 }
 
-function draw(ctx, geo, option, transform = [1,0,0,1,0,0]) {
+function draw(ctx, geo, option, transform) {
   const defaultOption = {
     font: {
       fontSize: 24,
@@ -90,9 +94,12 @@ function draw(ctx, geo, option, transform = [1,0,0,1,0,0]) {
   const coordinates = features.map(
     ({ geometry: { coordinates } }) => coordinates
   );
+  const matrix = matrixMultiply(transform, prevMatrix);
+  prevMatrix = matrix;
+  prevTransform = matrix.flat().filter((item, index) => ![2,3,6,7,8,9,10,11,14,15].includes(index))
   ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
   ctx.save();
-  ctx.transform(...transform);
+  ctx.transform(...prevTransform);
   coordinates.forEach((coordinate, index) => {
     let flatDeep = -2;
     let currCoordinate = coordinate[0];
@@ -141,19 +148,22 @@ function draw(ctx, geo, option, transform = [1,0,0,1,0,0]) {
 // draw(ctx, GeoJson["广东"]);
 // draw(ctx, GeoJson["上海"], {font: {fontColor: 'red'}});
 // draw(ctx, ChinaJson);
-draw(ctx, GeoJson["China"], { font: { fontColor: "white" } });
+draw(ctx, GeoJson["China"], { font: { fontColor: "white" } }, prevMatrix);
 
 $scaleCtl.addEventListener('click', ({target}) => {
+  let currScale;
   if (target.classList.contains('magnify')) {
-    scaleBase += 100 * 0.001;
+    currScale = scaleBase + 100 * 0.001;
+    draw(ctx, GeoJson["China"], { font: { fontColor: "white" }}, [[currScale/scaleBase,0,0,0],[0,currScale/scaleBase,0,0], [0,0,1,0], [0,0,0,1]]);
   } else if (target.classList.contains('minify')){
-    scaleBase -= 100 * 0.001;
+    currScale = scaleBase - 100 * 0.001;
+    draw(ctx, GeoJson["China"], { font: { fontColor: "white" }}, [[currScale/scaleBase,0,0,0],[0,currScale/scaleBase,0,0], [0,0,1,0], [0,0,0,1]]);
   } else if (target.classList.contains('reset')) {
-    scaleBase = 1;
-    globalTranslate.x = 0
-    globalTranslate.y = 0;
+    currScale = 1;
+    draw(ctx, GeoJson["China"], { font: { fontColor: "white" }}, matrixInverse(prevMatrix));
   }
-  draw(ctx, GeoJson["China"], { font: { fontColor: "white" }}, [scaleBase, 0, 0, scaleBase, globalTranslate.x, globalTranslate.y]);
+  
+  currScale = scaleBase;
 }, true);
 
 window.addEventListener('mousedown', (e) => {
@@ -176,18 +186,19 @@ window.addEventListener('mousemove', (e) => {
   if (!drag) {
     return;
   }
-  globalTranslate.x += clientX - dragPosition.x;
-  globalTranslate.y += clientY - dragPosition.y;
+  const offsetX = clientX - dragPosition.x;
+  const offsetY = clientY - dragPosition.y;
   ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
   ctx.save();
-  draw(octx, GeoJson["China"], { font: { fontColor: "white" }}, [scaleBase, 0, 0, scaleBase, globalTranslate.x, globalTranslate.y]);
+  draw(octx, GeoJson["China"], { font: { fontColor: "white" }}, [[1,0,0,0],[0,1,0,0], [0,0,1,0], [offsetX,offsetY,0,1]]);
   ctx.drawImage($offscreenCanvas, 0, 0);
   ctx.restore();
   dragPosition = {
     x: clientX,
     y: clientY
   };
-  
+  prevOffsetX = offsetX;
+  prevOffsetY = offsetY;
 }, true);
 
 window.addEventListener('mouseup', (e) => {
@@ -202,10 +213,15 @@ window.addEventListener('mouseup', (e) => {
 }, true);
 
 window.addEventListener("wheel", (e) => {
-  const {target} = e;
+  
+  const {target, clientX, clientY} = e;
   if (target !== $canvas) {
     return;
   }
-  scaleBase += e.deltaY * -0.001;
-  draw(ctx, GeoJson["China"], { font: { fontColor: "white" }}, [scaleBase, 0, 0, scaleBase, globalTranslate.x, globalTranslate.y]);
+  const currScale = scaleBase + e.deltaY * -0.001;
+  const offsetX = (1- currScale /scaleBase) * clientX - prevOffsetX / currScale;
+  const offsetY = (1- currScale / scaleBase) * clientY - prevOffsetY / currScale;
+  console.log(`offsetX: ${offsetX}`);
+  draw(ctx, GeoJson["China"], { font: { fontColor: "white" }}, [[currScale/scaleBase,0,0,0],[0,currScale/scaleBase,0,0], [0,0,1,0], [offsetX,offsetY,0,1]]);
+  scaleBase = currScale;
 }, true);
