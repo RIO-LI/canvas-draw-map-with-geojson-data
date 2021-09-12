@@ -1,22 +1,18 @@
 import "./styles.css";
 import GeoJson, { China as ChinaJson } from "china-geojson";
-import { min, max, merge } from "lodash";
+import { min, max, merge, get, isObject } from "lodash";
 import randomcolor from "randomcolor";
 import matrixInverse from "matrix-inverse";
 
-
+// 前一次变换矩阵
 let prevMatrix = [[1,0,0,0],[0,1,0,0], [0,0,1,0], [0,0,0,1]];
+// 前一次运行的矩阵变换结果
 let prevTransform = [1,0,0,1,0,0];
-let prevOffsetX = 0;
-let prevOffsetY = 0;
+
 const $scaleCtl = document.querySelector('.scale-contoller');
 let scaleBase = 1;
 let drag = false;
 let dragPosition = null;
-const $offscreenCanvas = document.createElement("canvas");
-const octx = $offscreenCanvas.getContext("2d");
-$offscreenCanvas.width = document.documentElement.clientWidth;
-$offscreenCanvas.height = document.documentElement.clientHeight;
 const $canvas = document.getElementById("canvas");
 const ctx = $canvas.getContext("2d");
 $canvas.width = document.documentElement.clientWidth;
@@ -94,7 +90,7 @@ function draw(ctx, geo, option, transform) {
   const coordinates = features.map(
     ({ geometry: { coordinates } }) => coordinates
   );
-  const matrix = matrixMultiply(transform, prevMatrix);
+  const matrix = matrixMultiply(prevMatrix, transform);
   prevMatrix = matrix;
   prevTransform = matrix.flat().filter((item, index) => ![2,3,6,7,8,9,10,11,14,15].includes(index))
   ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
@@ -151,19 +147,23 @@ function draw(ctx, geo, option, transform) {
 draw(ctx, GeoJson["China"], { font: { fontColor: "white" } }, prevMatrix);
 
 $scaleCtl.addEventListener('click', ({target}) => {
-  let currScale;
-  if (target.classList.contains('magnify')) {
-    currScale = scaleBase + 100 * 0.001;
-    draw(ctx, GeoJson["China"], { font: { fontColor: "white" }}, [[currScale/scaleBase,0,0,0],[0,currScale/scaleBase,0,0], [0,0,1,0], [0,0,0,1]]);
-  } else if (target.classList.contains('minify')){
-    currScale = scaleBase - 100 * 0.001;
-    draw(ctx, GeoJson["China"], { font: { fontColor: "white" }}, [[currScale/scaleBase,0,0,0],[0,currScale/scaleBase,0,0], [0,0,1,0], [0,0,0,1]]);
-  } else if (target.classList.contains('reset')) {
-    currScale = 1;
+  if (target.classList.contains('reset')) {
+    // 将缩放倍数调整为1，传入上一次矩阵的逆，相乘获得单位向量，这样就可以还原到原始的坐标系
+    scaleBase = 1;
     draw(ctx, GeoJson["China"], { font: { fontColor: "white" }}, matrixInverse(prevMatrix));
+  } else {
+    const wheelEvt = new CustomEvent("wheel", {
+      detail: {
+        deltaY: 0,
+      }
+    });
+    if (target.classList.contains('magnify')) {
+      wheelEvt.detail.deltaY = -100;
+    } else if (target.classList.contains('minify')){
+      wheelEvt.detail.deltaY = 100;
+    } 
+    $canvas.dispatchEvent(wheelEvt);
   }
-  
-  currScale = scaleBase;
 }, true);
 
 window.addEventListener('mousedown', (e) => {
@@ -186,19 +186,15 @@ window.addEventListener('mousemove', (e) => {
   if (!drag) {
     return;
   }
-  const offsetX = clientX - dragPosition.x;
-  const offsetY = clientY - dragPosition.y;
-  ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-  ctx.save();
-  draw(octx, GeoJson["China"], { font: { fontColor: "white" }}, [[1,0,0,0],[0,1,0,0], [0,0,1,0], [offsetX,offsetY,0,1]]);
-  ctx.drawImage($offscreenCanvas, 0, 0);
+  const offsetX =  clientX - dragPosition.x;
+  const offsetY =  clientY - dragPosition.y;
+  draw(ctx, GeoJson["China"], { font: { fontColor: "white" }}, [[1,0,0,0],[0,1,0,0], [0,0,1,0], [offsetX,offsetY,0,1]]);
   ctx.restore();
   dragPosition = {
     x: clientX,
     y: clientY
   };
-  prevOffsetX = offsetX;
-  prevOffsetY = offsetY;
+  
 }, true);
 
 window.addEventListener('mouseup', (e) => {
@@ -213,15 +209,22 @@ window.addEventListener('mouseup', (e) => {
 }, true);
 
 window.addEventListener("wheel", (e) => {
-  
-  const {target, clientX, clientY} = e;
+  const {target, clientX, clientY, detail, deltaY} = e;
+  const isCustom = isObject(detail);
+  const delta = isCustom ? get(detail, 'deltaY', 0): deltaY;
   if (target !== $canvas) {
     return;
   }
-  const currScale = scaleBase + e.deltaY * -0.001;
-  const offsetX = (1- currScale /scaleBase) * clientX - prevOffsetX / currScale;
-  const offsetY = (1- currScale / scaleBase) * clientY - prevOffsetY / currScale;
-  console.log(`offsetX: ${offsetX}`);
-  draw(ctx, GeoJson["China"], { font: { fontColor: "white" }}, [[currScale/scaleBase,0,0,0],[0,currScale/scaleBase,0,0], [0,0,1,0], [offsetX,offsetY,0,1]]);
+  if (delta === 0) {
+    return;
+  }
+  let currScale = scaleBase + (delta > 0 ? -0.1 : 0.1);
+  // 最小缩至0.1倍，否则过小会导致看不到的问题;
+  currScale = Math.max(currScale > 0 ? currScale : scaleBase, 0.1);
+  const zoom = currScale / scaleBase;
+  const x = !isCustom ? clientX * (1 - zoom) : ctx.canvas.width / 2 * (1 - zoom);
+  const y = !isCustom ? clientY * (1 - zoom) : ctx.canvas.height / 2 * (1 - zoom);
   scaleBase = currScale;
+  draw(ctx, GeoJson["China"], { font: { fontColor: "white" }}, [[zoom,0,0,0],[0,zoom,0,0], [0,0,1,0], [x,y,0,1]], true);
+  
 }, true);
