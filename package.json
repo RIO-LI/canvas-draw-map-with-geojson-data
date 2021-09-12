@@ -12,13 +12,27 @@
     "lodash": "4.17.21",
     "parcel-bundler": "^1.6.1",
     "randomcolor": "0.6.2",
-    "matrix-inverse": "2.0.0"
+    "matrix-inverse": "2.0.0",
+    "custom-event-polyfill": "1.0.7",
+    "parcel-plugin-static-files-copy": "2.6.0"
   },
   "devDependencies": {
-    "@babel/core": "7.2.0"
+    "@babel/core": "7.15.0",
+    "@babel/plugin-transform-runtime": "7.15.0",
+    "@babel/runtime": "7.15.3",
+    "@babel/runtime-corejs3": "7.15.3"
   },
   "resolutions": {
     "@babel/preset-env": "7.13.8"
   },
-  "keywords": []
+  "keywords": [],
+  "staticFiles": {
+    "staticPath": [
+      {
+        "staticPath": "public",
+        "staticOutDir": "public"
+      }
+    ],
+    "watcherGlob": "**"
+  }
 }

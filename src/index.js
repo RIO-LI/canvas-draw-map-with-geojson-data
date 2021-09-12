@@ -1,3 +1,4 @@
+import "custom-event-polyfill";
 import "./styles.css";
 import GeoJson, { China as ChinaJson } from "china-geojson";
 import { min, max, merge, get, isObject } from "lodash";
@@ -166,13 +167,21 @@ $scaleCtl.addEventListener('click', ({target}) => {
   }
 }, true);
 
+window.addEventListener('mouseover', (e) => {
+  const {target} = e;
+  if (target !== $canvas) {
+    return;
+  }
+  target.style.cursor = `url(${location.origin}/public/openhand.cur),default`;
+})
+
 window.addEventListener('mousedown', (e) => {
   const {target, clientX, clientY} = e;
   e.preventDefault();
   if (target !== $canvas) {
     return;
   }
-  target.style.cursor = "grabbing";
+  target.style.cursor = `url(${location.origin}/public/closedhand.cur),default`;
   drag = true;
   dragPosition = {
     x: clientX,
@@ -189,7 +198,6 @@ window.addEventListener('mousemove', (e) => {
   const offsetX =  clientX - dragPosition.x;
   const offsetY =  clientY - dragPosition.y;
   draw(ctx, GeoJson["China"], { font: { fontColor: "white" }}, [[1,0,0,0],[0,1,0,0], [0,0,1,0], [offsetX,offsetY,0,1]]);
-  ctx.restore();
   dragPosition = {
     x: clientX,
     y: clientY
@@ -203,7 +211,7 @@ window.addEventListener('mouseup', (e) => {
   if (!drag) {
     return;
   }
-  target.style.cursor = "grab";
+  target.style.cursor = `url(${location.origin}/public/openhand.cur),default`;
   drag = false;
   dragPosition = null;
 }, true);
